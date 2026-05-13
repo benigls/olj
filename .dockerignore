@@ -1,0 +1,7 @@
+.git
+.dlt
+.venv
+__pycache__
+*.pyc
+*.duckdb
+.state
