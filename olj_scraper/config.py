@@ -24,6 +24,8 @@ ALERT_STATE_TABLE = "alert_state"
 MATCH_TAGS = {
     "sql",
     "python",
+    "data engineering",
+    "big data",
 }
 MATCH_TITLE_KEYWORDS = {
     "data engineer",

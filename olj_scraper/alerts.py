@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
+import dlt
+
 from .config import (
     ALERT_STATE_NAME,
     ALERT_STATE_TABLE,

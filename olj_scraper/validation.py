@@ -6,11 +6,18 @@ import requests
 from bs4 import BeautifulSoup
 
 from .config import BASE_URL, START_URL
-from .parsing import extract_job_id, fetch_page, get_next_page_url, parse_jobs, strip_or_none
+from .parsing import (
+    extract_job_id,
+    fetch_page,
+    get_next_page_url,
+    parse_jobs,
+    strip_or_none,
+)
 from .telegram import get_secret, send_telegram_message
 
 MIN_SAMPLE_JOBS = 3
 log = logging.getLogger(__name__)
+
 
 class ValidationFailed(RuntimeError):
     pass
@@ -44,7 +51,10 @@ def assert_true(condition: bool, message: str) -> None:
 
 def validate_helpers() -> None:
     assert_true(strip_or_none("  hello  ") == "hello", "strip_or_none failed")
-    assert_true(strip_or_none("   ") is None, "strip_or_none should return None for blank strings")
+    assert_true(
+        strip_or_none("   ") is None,
+        "strip_or_none should return None for blank strings",
+    )
     assert_true(
         extract_job_id("/jobseekers/job/Sales-Assistant-1600429") == "1600429",
         "extract_job_id failed on hyphenated job path",
@@ -71,7 +81,9 @@ def validate_fixture() -> None:
         job["title"] == "Calling All Go High Level Website & Funnel Designers",
         "Fixture title mismatch",
     )
-    assert_true(job["employment_type"] == "Full Time", "Fixture employment_type mismatch")
+    assert_true(
+        job["employment_type"] == "Full Time", "Fixture employment_type mismatch"
+    )
     assert_true(job["posted_at"] == "2026-05-07", "Fixture posted_at mismatch")
     assert_true(job["rate"] == "$10/hr", "Fixture rate mismatch")
     assert_true(job["tags"] == "Remote", "Fixture tags mismatch")
@@ -83,10 +95,17 @@ def validate_live_page(soup: BeautifulSoup) -> None:
 
     sample_size = min(MIN_SAMPLE_JOBS, len(jobs))
     for index, job in enumerate(jobs[:sample_size], start=1):
-        assert_true(job["job_url"].startswith(BASE_URL), f"Job {index}: job_url is not absolute")
-        assert_true(isinstance(job["job_id"], int), f"Job {index}: job_id is not an int")
+        assert_true(
+            job["job_url"].startswith(BASE_URL), f"Job {index}: job_url is not absolute"
+        )
+        assert_true(
+            isinstance(job["job_id"], int), f"Job {index}: job_id is not an int"
+        )
         assert_true(bool(job["title"]), f"Job {index}: title is empty")
-        assert_true(job["title"] == job["title"].strip(), f"Job {index}: title has surrounding whitespace")
+        assert_true(
+            job["title"] == job["title"].strip(),
+            f"Job {index}: title has surrounding whitespace",
+        )
         if job["employment_type"] is not None:
             assert_true(
                 job["employment_type"] == job["employment_type"].strip(),
@@ -98,7 +117,10 @@ def validate_live_page(soup: BeautifulSoup) -> None:
                 f"Job {index}: posted_at has surrounding whitespace",
             )
         if job["rate"] is not None:
-            assert_true(job["rate"] == job["rate"].strip(), f"Job {index}: rate has surrounding whitespace")
+            assert_true(
+                job["rate"] == job["rate"].strip(),
+                f"Job {index}: rate has surrounding whitespace",
+            )
         if job["tags"] is not None:
             assert_true(
                 job["tags"] == job["tags"].strip(),
@@ -129,7 +151,7 @@ def run_preflight_validation() -> None:
             send_telegram_message(
                 token,
                 chat_id,
-                f"OLJ validation failed\n{exc}",
+                f"⚠️ OLJ validation failed ⚠️\n {exc}",
                 parse_mode="",
             )
         except Exception as alert_exc:
