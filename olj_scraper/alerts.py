@@ -6,21 +6,17 @@ from datetime import UTC, datetime
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
-import dlt
-import requests
-
 from .config import (
     ALERT_STATE_NAME,
     ALERT_STATE_TABLE,
     DATASET_NAME,
     MATCH_TAGS,
     MATCH_TITLE_KEYWORDS,
-    TELEGRAM_API_BASE,
-    TELEGRAM_MAX_MESSAGE_LENGTH,
 )
 from .ingestion import run_ingestion
 from .logging_utils import ensure_logging
 from .pipeline import get_pipeline
+from .telegram import get_secret, send_telegram_message
 from .validation import run_preflight_validation
 
 log = logging.getLogger(__name__)
@@ -36,23 +32,6 @@ class AlertJob:
     posted_at: datetime | str | None
     rate: str | None
     employment_type: str | None
-
-
-def get_secret(name: str) -> str:
-    try:
-        value = dlt.secrets[name]
-    except Exception as exc:
-        raise RuntimeError(f"Missing dlt secret: {name}") from exc
-
-    if value is None:
-        raise RuntimeError(f"Missing dlt secret: {name}")
-
-    value = str(value).strip()
-    if not value:
-        raise RuntimeError(f"Empty dlt secret: {name}")
-
-    return value
-
 
 def split_tags(tags: str | None) -> list[str]:
     if not tags:
@@ -108,45 +87,6 @@ def format_posted_at(value: datetime | str | None) -> str:
     parsed = parsed.astimezone(ALERT_TIMEZONE)
     truncated = parsed.replace(minute=0, second=0, microsecond=0)
     return truncated.strftime("%b %-d, %Y %-I:00 %p")
-
-
-def send_telegram_message(token: str, chat_id: str, text: str) -> None:
-    token = token.strip()
-    chat_id = chat_id.strip()
-    text = text.strip()
-
-    if not token:
-        raise RuntimeError("Telegram bot token is empty.")
-    if not chat_id:
-        raise RuntimeError("Telegram chat id is empty.")
-    if not text:
-        raise RuntimeError("Telegram message text is empty.")
-
-    url = f"{TELEGRAM_API_BASE}/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text[:TELEGRAM_MAX_MESSAGE_LENGTH],
-        "parse_mode": "MarkdownV2",
-        "disable_web_page_preview": False,
-    }
-    response = requests.post(
-        url,
-        json=payload,
-        timeout=30,
-    )
-    if response.ok:
-        return
-
-    try:
-        error_detail: Any = response.json()
-    except ValueError:
-        error_detail = response.text
-
-    raise RuntimeError(
-        f"Telegram sendMessage failed with status {response.status_code}: "
-        f"{error_detail}"
-    )
-
 
 def format_alert(job: AlertJob) -> str:
     title = escape_markdown_v2(job.title or "Untitled job")
@@ -298,7 +238,9 @@ def run_alerts() -> None:
     )
 
     for job in jobs:
-        send_telegram_message(token, chat_id, format_alert(job))
+        send_telegram_message(
+            token, chat_id, format_alert(job), parse_mode="MarkdownV2"
+        )
         last_matching_job_id = max(last_matching_job_id, job.job_id)
         log.info("Sent Telegram alert for job_id=%s", job.job_id)
 

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import logging
+
 import requests
 from bs4 import BeautifulSoup
 
 from .config import BASE_URL, START_URL
 from .parsing import extract_job_id, fetch_page, get_next_page_url, parse_jobs, strip_or_none
+from .telegram import get_secret, send_telegram_message
 
 MIN_SAMPLE_JOBS = 3
+log = logging.getLogger(__name__)
+
+class ValidationFailed(RuntimeError):
+    pass
+
 
 FIXTURE_HTML = """
 <a href="/jobseekers/job/calling-all-go-high-level-1600429">
@@ -26,7 +34,7 @@ FIXTURE_HTML = """
 
 def fail(message: str) -> None:
     print(f"[FAIL] {message}")
-    raise SystemExit(1)
+    raise ValidationFailed(message)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -104,13 +112,28 @@ def validate_live_page(soup: BeautifulSoup) -> None:
 
 def run_preflight_validation() -> None:
     print("[INFO] Running scraper preflight validation")
-    validate_helpers()
-    validate_fixture()
+    try:
+        validate_helpers()
+        validate_fixture()
 
-    session = requests.Session()
-    soup = fetch_page(session, START_URL)
-    if soup is None:
-        fail(f"Could not fetch start page: {START_URL}")
+        session = requests.Session()
+        soup = fetch_page(session, START_URL)
+        if soup is None:
+            fail(f"Could not fetch start page: {START_URL}")
 
-    validate_live_page(soup)
+        validate_live_page(soup)
+    except ValidationFailed as exc:
+        try:
+            token = get_secret("telegram_bot_token")
+            chat_id = get_secret("telegram_chat_id")
+            send_telegram_message(
+                token,
+                chat_id,
+                f"OLJ validation failed\n{exc}",
+                parse_mode="",
+            )
+        except Exception as alert_exc:
+            log.exception("Failed to send validation failure alert: %s", alert_exc)
+        raise SystemExit(1) from exc
+
     print("[PASS] Validation succeeded")
