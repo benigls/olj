@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import pdb
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Iterator
@@ -196,7 +195,6 @@ def build_alert_where_clause() -> str:
 def fetch_matching_jobs_since(pipeline: Any, last_alert_run_at: str) -> list[AlertJob]:
     alert_where_clause = build_alert_where_clause()
     with pipeline.sql_client() as client:
-        pdb.set_trace()
         with client.execute_query(
             f"""
             SELECT
@@ -209,7 +207,7 @@ def fetch_matching_jobs_since(pipeline: Any, last_alert_run_at: str) -> list[Ale
                 employment_type
             FROM {DATASET_NAME}.job_postings
             WHERE loaded_at > {sql_literal(last_alert_run_at)}
-              AND {alert_where_clause}
+                AND ({alert_where_clause})
             ORDER BY job_id ASC
             """
         ) as cur:
@@ -298,7 +296,6 @@ def run_alerts() -> None:
         len(jobs),
         last_alert_run_at,
     )
-    pdb.set_trace()
 
     for job in jobs:
         send_telegram_message(token, chat_id, format_alert(job))
