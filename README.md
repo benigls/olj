@@ -118,3 +118,116 @@ docker run --rm \
 ```
 
 The container starts `run_alerts.py` by default. The `.dlt` directory is excluded from the Docker build context so real secrets are only mounted at runtime.
+
+## Deploy to Google Cloud Run
+
+This project should be deployed as a `Cloud Run Job`, not a long-running `Cloud Run Service`. The container validates the scraper, ingests new jobs, sends Telegram alerts, and exits.
+
+Set deployment variables:
+
+```bash
+export PROJECT_ID="add your project id here"
+export REGION="add your region here"
+export REPO="olj"
+export IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/onlinejobs-alerts:latest"
+export JOB="olj-alerts"
+export JOB_SA="your-cloud-run-job-service-account@$PROJECT_ID.iam.gserviceaccount.com"
+
+gcloud config set project "$PROJECT_ID"
+```
+
+Enable required APIs:
+
+```bash
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  secretmanager.googleapis.com \
+  cloudscheduler.googleapis.com
+```
+
+Create the Artifact Registry repository once:
+
+```bash
+gcloud artifacts repositories create "$REPO" \
+  --repository-format=docker \
+  --location="$REGION" \
+  --description="OLJ container images"
+```
+
+Store your dlt secrets file in Secret Manager:
+
+```bash
+gcloud secrets create olj-dlt-secrets \
+  --data-file=.dlt/secrets.toml
+```
+
+To update the secret later:
+
+```bash
+gcloud secrets versions add olj-dlt-secrets \
+  --data-file=.dlt/secrets.toml
+```
+
+Build and push the image with Cloud Build:
+
+```bash
+gcloud builds submit \
+  --tag "$IMAGE" \
+  .
+```
+
+Grant the Cloud Run Job service account access to the secret:
+
+```bash
+gcloud secrets add-iam-policy-binding olj-dlt-secrets \
+  --member="serviceAccount:$JOB_SA" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+Deploy the Cloud Run Job:
+
+```bash
+gcloud run jobs deploy "$JOB" \
+  --image "$IMAGE" \
+  --region "$REGION" \
+  --service-account "$JOB_SA" \
+  --tasks 1 \
+  --max-retries 0 \
+  --task-timeout 3600 \
+  --memory 512Mi \
+  --set-secrets /app/.dlt/secrets.toml=olj-dlt-secrets:latest
+```
+
+Run the job once manually:
+
+```bash
+gcloud run jobs execute "$JOB" \
+  --region "$REGION" \
+  --wait
+```
+
+Schedule the job every hour in Manila time:
+
+```bash
+export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+export SCHEDULER_SA="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
+
+gcloud scheduler jobs create http olj-alerts-hourly \
+  --location "$REGION" \
+  --schedule "0 * * * *" \
+  --time-zone "Asia/Manila" \
+  --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$JOB:run" \
+  --http-method POST \
+  --oauth-service-account-email "$SCHEDULER_SA"
+```
+
+Useful verification commands:
+
+```bash
+gcloud builds list --limit=5
+gcloud artifacts docker images list "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"
+gcloud run jobs describe "$JOB" --region "$REGION"
+gcloud scheduler jobs describe olj-alerts-hourly --location "$REGION"
+```
