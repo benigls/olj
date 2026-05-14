@@ -132,6 +132,7 @@ export REPO="olj"
 export IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/onlinejobs-alerts:latest"
 export JOB="olj-alerts"
 export JOB_SA="your-cloud-run-job-service-account@$PROJECT_ID.iam.gserviceaccount.com"
+export SCHEDULER_SA="your-cloud-scheduler-service-account@$PROJECT_ID.iam.gserviceaccount.com"
 
 gcloud config set project "$PROJECT_ID"
 ```
@@ -211,16 +212,20 @@ gcloud run jobs execute "$JOB" \
 Schedule the job every hour in Manila time:
 
 ```bash
-export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-export SCHEDULER_SA="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
+gcloud iam service-accounts create "$(echo "$SCHEDULER_SA" | cut -d@ -f1)" \
+  --display-name="Cloud Scheduler OLJ"
 
-gcloud scheduler jobs create http olj-alerts-hourly \
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$SCHEDULER_SA" \
+  --role="roles/run.developer"
+
+gcloud scheduler jobs create http olj-alerts-scheduler \
   --location "$REGION" \
-  --schedule "0 * * * *" \
-  --time-zone "Asia/Manila" \
+  --schedule "*/10 * * * *" \
   --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/$JOB:run" \
   --http-method POST \
-  --oauth-service-account-email "$SCHEDULER_SA"
+  --oauth-service-account-email "$SCHEDULER_SA" \
+  --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
 ```
 
 Useful verification commands:
@@ -229,5 +234,5 @@ Useful verification commands:
 gcloud builds list --limit=5
 gcloud artifacts docker images list "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"
 gcloud run jobs describe "$JOB" --region "$REGION"
-gcloud scheduler jobs describe olj-alerts-hourly --location "$REGION"
+gcloud scheduler jobs describe olj-alerts-scheduler --location "$REGION"
 ```
